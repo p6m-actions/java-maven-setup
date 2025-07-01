@@ -1,0 +1,123 @@
+name: "Java Maven Setup"
+description: "Setup Java JDK with Maven dependency caching for faster builds"
+author: "Jimmie Fulton <jimmie@ybor.ai>"
+
+# Define the inputs for this action
+inputs:
+  java-version:
+    description: "Java JDK version to install"
+    required: false
+    default: "21"
+  java-distribution:
+    description: "Java distribution to install"
+    required: false
+    default: "temurin"
+  maven-version:
+    description: "Maven version to install (if not using wrapper)"
+    required: false
+  cache:
+    description: "Enable Maven dependency caching"
+    required: false
+    default: "true"
+  install-dependencies:
+    description: "Install Maven dependencies after setup"
+    required: false
+    default: "true"
+  maven-cache-key-suffix:
+    description: "Additional suffix for Maven cache key"
+    required: false
+
+# Define the outputs for this action
+outputs:
+  java-version:
+    description: "The installed Java JDK version"
+    value: ${{ steps.java-version-output.outputs.java-version }}
+  maven-version:
+    description: "The installed Maven version"
+    value: ${{ steps.maven-version-output.outputs.maven-version }}
+  cache-hit:
+    description: "Whether the Maven cache was hit"
+    value: ${{ steps.maven-cache.outputs.cache-hit }}
+  maven-cache-dir:
+    description: "Path to the Maven cache directory"
+    value: ${{ steps.maven-cache-dir.outputs.maven-cache-dir }}
+
+# Define the runs configuration
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Java JDK
+      id: setup-java
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: ${{ inputs.java-distribution }}
+        cache: false
+
+    - name: Setup Maven
+      if: inputs.maven-version != ''
+      shell: bash
+      run: |
+        wget -q https://archive.apache.org/dist/maven/maven-3/${{ inputs.maven-version }}/binaries/apache-maven-${{ inputs.maven-version }}-bin.tar.gz
+        tar -xzf apache-maven-${{ inputs.maven-version }}-bin.tar.gz
+        sudo mv apache-maven-${{ inputs.maven-version }} /opt/maven
+        echo "/opt/maven/bin" >> $GITHUB_PATH
+
+    - name: Get Maven cache directory
+      id: maven-cache-dir
+      shell: bash
+      run: |
+        if command -v mvn &> /dev/null; then
+          MAVEN_CACHE_DIR=$(mvn help:evaluate -Dexpression=settings.localRepository -q -DforceStdout 2>/dev/null || echo "$HOME/.m2/repository")
+        else
+          MAVEN_CACHE_DIR="$HOME/.m2/repository"
+        fi
+        echo "dir=$MAVEN_CACHE_DIR" >> $GITHUB_OUTPUT
+        echo "maven-cache-dir=$MAVEN_CACHE_DIR" >> $GITHUB_OUTPUT
+
+    - name: Cache Maven dependencies
+      id: maven-cache
+      if: inputs.cache == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.maven-cache-dir.outputs.dir }}
+        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}${{ inputs.maven-cache-key-suffix && format('-{0}', inputs.maven-cache-key-suffix) || '' }}
+        restore-keys: |
+          ${{ runner.os }}-maven-
+
+    - name: Install dependencies
+      if: inputs.install-dependencies == 'true'
+      shell: bash
+      run: |
+        if [ -f "pom.xml" ]; then
+          mvn dependency:resolve -B -q
+        elif [ -f "mvnw" ]; then
+          ./mvnw dependency:resolve -B -q
+        else
+          echo "No pom.xml or Maven wrapper found, skipping dependency installation"
+        fi
+
+    - name: Output installed Java version
+      id: java-version-output
+      shell: bash
+      run: |
+        JAVA_VERSION=$(java -version 2>&1 | head -n 1 | cut -d'"' -f2)
+        echo "java-version=$JAVA_VERSION" >> $GITHUB_OUTPUT
+
+    - name: Output installed Maven version
+      id: maven-version-output
+      shell: bash
+      run: |
+        if command -v mvn &> /dev/null; then
+          MAVEN_VERSION=$(mvn --version 2>/dev/null | head -n 1 | cut -d' ' -f3)
+        elif [ -f "mvnw" ]; then
+          MAVEN_VERSION=$(./mvnw --version 2>/dev/null | head -n 1 | cut -d' ' -f3)
+        else
+          MAVEN_VERSION="not-installed"
+        fi
+        echo "maven-version=$MAVEN_VERSION" >> $GITHUB_OUTPUT
+
+# Define the branding for the action in the GitHub Marketplace
+branding:
+  icon: "package"
+  color: "red"
