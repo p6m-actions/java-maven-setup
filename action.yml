@@ -52,7 +52,11 @@ runs:
       with:
         java-version: ${{ inputs.java-version }}
         distribution: ${{ inputs.java-distribution }}
-        cache: false
+        # No `cache:` here on purpose. setup-java's `cache` input names a package
+        # manager (maven/gradle/sbt); a boolean like `false` is read as a package
+        # manager name and fails with "unknown package manager specified: false".
+        # Omitting it disables setup-java's built-in cache; this action does its own
+        # Maven caching in the "Cache Maven dependencies" step below.
 
     - name: Setup Maven
       if: inputs.maven-version != ''
