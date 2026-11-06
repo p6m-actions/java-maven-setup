@@ -48,7 +48,7 @@ runs:
   steps:
     - name: Setup Java JDK
       id: setup-java
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         java-version: ${{ inputs.java-version }}
         distribution: ${{ inputs.java-distribution }}
@@ -82,7 +82,7 @@ runs:
     - name: Cache Maven dependencies
       id: maven-cache
       if: inputs.cache == 'true'
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ${{ steps.maven-cache-dir.outputs.dir }}
         key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}${{ inputs.maven-cache-key-suffix && format('-{0}', inputs.maven-cache-key-suffix) || '' }}
